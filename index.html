@@ -304,6 +304,39 @@
     .seg-input:focus { outline: none; border-color: var(--fire-light); }
     .edit-hint { font-size: 0.7rem; color: var(--text3); }
     td.edit-cell { padding: 4px 6px; }
+
+    /* ── Calibration ── */
+    .calib-wrap { margin-top: 0; }
+    .calib-add-row {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 10px 12px; border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+    .calib-add-row label { font-size: 0.75rem; color: var(--text2); white-space: nowrap; }
+    .calib-input {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); font-size: 0.9rem; padding: 5px 9px; width: auto;
+      color-scheme: dark;
+    }
+    .calib-input:focus { outline: none; border-color: var(--fire); }
+    .calib-input.temp-input { width: 90px; }
+    .calib-count {
+      font-size: 0.65rem; background: rgba(68,170,255,0.15); color: #44aaff;
+      border: 1px solid rgba(68,170,255,0.4); border-radius: 10px;
+      padding: 1px 8px; margin-left: 8px; vertical-align: middle;
+    }
+    .calib-actions {
+      display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border);
+      flex-wrap: wrap; align-items: center;
+    }
+    .calib-msg {
+      font-size: 0.78rem; padding: 0 12px 10px; color: var(--text2);
+    }
+    .rate-good  { color: #44dd88; font-weight: 600; }
+    .rate-slow  { color: #ffcc44; font-weight: 600; }
+    .rate-vslow { color: #ff6644; font-weight: 600; }
+    .seg-action-btn.blue { border-color: rgba(68,170,255,0.5); color: #44aaff; }
+    .seg-action-btn.blue:hover { border-color: #44aaff; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -432,6 +465,35 @@
       </thead>
       <tbody id="segTableBody"></tbody>
     </table>
+  </details>
+
+  <!-- Calibration -->
+  <details class="seg-table-wrap calib-wrap" id="calibDetails">
+    <summary>Kiln Calibration <span class="calib-count" id="calibCount" style="display:none"></span></summary>
+    <div class="calib-add-row">
+      <label>Time</label>
+      <input type="time" class="calib-input" id="calibTime">
+      <label>Temp</label>
+      <input type="number" class="calib-input temp-input" id="calibTemp" placeholder="°">
+      <button class="seg-action-btn blue" id="calibAddBtn">+ Add Reading</button>
+      <button class="seg-action-btn" id="calibNowBtn" title="Set time to now">Now</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Clock</th><th>Elapsed</th><th>Temp</th>
+          <th>Actual Rate</th><th>vs Program</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="calibTableBody"></tbody>
+    </table>
+    <div class="calib-actions">
+      <button class="seg-action-btn danger" id="calibClearBtn">✕ Clear All</button>
+      <button class="seg-action-btn primary" id="calibApplyBtn">↯ Apply as Custom Program</button>
+    </div>
+    <div class="calib-msg" id="calibMsg">
+      Log actual temperature readings during a firing to calibrate your kiln's real rates.
+    </div>
   </details>
 </main>
 
@@ -777,17 +839,35 @@ function initChart() {
   chart = new Chart(ctx, {
     type: 'line',
     data: {
-      datasets: [{
-        data: [],
-        parsing: false,
-        borderColor: '#ff6a00',
-        borderWidth: 2.5,
-        backgroundColor: 'rgba(255,106,0,0.12)',
-        fill: true,
-        tension: 0,
-        pointRadius: 0,
-        pointHoverRadius: 0,
-      }]
+      datasets: [
+        {
+          label: 'Program',
+          data: [],
+          parsing: false,
+          borderColor: '#ff6a00',
+          borderWidth: 2.5,
+          backgroundColor: 'rgba(255,106,0,0.12)',
+          fill: true,
+          tension: 0,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+        },
+        {
+          label: 'Actual',
+          data: [],
+          parsing: false,
+          borderColor: '#44aaff',
+          borderWidth: 2,
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0,
+          pointRadius: 6,
+          pointHoverRadius: 8,
+          pointBackgroundColor: '#44aaff',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 1.5,
+        }
+      ]
     },
     options: {
       animation: false,
@@ -826,7 +906,10 @@ function initChart() {
           bodyColor: '#f0f0f0',
           callbacks: {
             title: items => fmtMin(items[0].parsed.x),
-            label: item => `${Math.round(item.parsed.y)}${unitLabel(state.unit)}`,
+            label: item => {
+              const prefix = item.datasetIndex === 1 ? 'Actual: ' : 'Program: ';
+              return prefix + Math.round(item.parsed.y) + unitLabel(state.unit);
+            },
           },
         },
         vertLine: { x: null, y: null },
@@ -872,6 +955,9 @@ function refreshChart() {
   updateDurationDisplay();
   renderSegTable();
   renderPhaseLegend();
+  loadCalibPoints();
+  renderCalibTable();
+  updateCalibChart();
 }
 
 // ── Duration display ───────────────────────────────────────────────────────
@@ -1223,6 +1309,236 @@ document.getElementById('saveBtn').addEventListener('click', saveEditMode);
 document.getElementById('cancelBtn').addEventListener('click', cancelEditMode);
 document.getElementById('resetBtn').addEventListener('click', resetProgram);
 
+// ── Calibration ────────────────────────────────────────────────────────────
+const CALIB_KEY = 'fireglass_calib';
+let calibPoints = []; // [{elapsedMin, tempF}] sorted by elapsedMin
+
+function loadCalibPoints() {
+  try {
+    const raw = localStorage.getItem(CALIB_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (saved.type === state.type && saved.speed === state.speed) {
+      calibPoints = saved.points || [];
+    }
+  } catch { calibPoints = []; }
+}
+
+function saveCalibPoints() {
+  localStorage.setItem(CALIB_KEY, JSON.stringify({
+    type: state.type, speed: state.speed, points: calibPoints,
+  }));
+}
+
+function getSessionStartMs() {
+  return state.startTime || null;
+}
+
+function addCalibPoint() {
+  const startMs = getSessionStartMs();
+  if (!startMs) { alert('Please start a session first (or enter a start time and press START FIRING).'); return; }
+  const timeVal = document.getElementById('calibTime').value;
+  const tempVal = parseFloat(document.getElementById('calibTemp').value);
+  if (!timeVal) { alert('Enter a clock time for this reading.'); return; }
+  if (isNaN(tempVal)) { alert('Enter a temperature value.'); return; }
+
+  const [hh, mm] = timeVal.split(':').map(Number);
+  const now = new Date(startMs);
+  const reading = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+  // if reading is before session start, try next day
+  if (reading.getTime() < startMs - 60000) reading.setDate(reading.getDate() + 1);
+  const elapsedMin = (reading.getTime() - startMs) / 60000;
+  if (elapsedMin < -1) { alert('Reading time is before the session start time.'); return; }
+
+  // Convert to °F for storage
+  const tempF = state.unit === 'C' ? Math.round(tempVal * 9/5 + 32) : tempVal;
+  calibPoints.push({ elapsedMin: Math.max(0, elapsedMin), tempF });
+  calibPoints.sort((a,b) => a.elapsedMin - b.elapsedMin);
+  saveCalibPoints();
+  renderCalibTable();
+  updateCalibChart();
+  // Reset temp input for next entry
+  document.getElementById('calibTemp').value = '';
+}
+
+function removeCalibPoint(i) {
+  calibPoints.splice(i, 1);
+  saveCalibPoints();
+  renderCalibTable();
+  updateCalibChart();
+}
+
+function clearCalibration() {
+  if (!confirm('Clear all calibration readings?')) return;
+  calibPoints = [];
+  localStorage.removeItem(CALIB_KEY);
+  renderCalibTable();
+  updateCalibChart();
+}
+
+// Find the programmed rate active at a given temperature (going in a direction)
+function programmedRateAt(tempF) {
+  const segs = getSegmentsF(state.type, state.speed);
+  let prev = 70; // room temp
+  for (const seg of segs) {
+    const lo = Math.min(prev, seg.temp), hi = Math.max(prev, seg.temp);
+    if (tempF >= lo && tempF <= hi) return seg.rate;
+    prev = seg.temp;
+  }
+  return segs[segs.length-1].rate;
+}
+
+function rateClass(actual, programmed) {
+  if (programmed >= 9999) return '';
+  const ratio = actual / programmed;
+  if (ratio >= 0.85) return 'rate-good';
+  if (ratio >= 0.5)  return 'rate-slow';
+  return 'rate-vslow';
+}
+
+function renderCalibTable() {
+  const tbody = document.getElementById('calibTableBody');
+  tbody.innerHTML = '';
+  const ul = unitLabel(state.unit);
+  const startMs = getSessionStartMs();
+  const countEl = document.getElementById('calibCount');
+
+  if (calibPoints.length === 0) {
+    countEl.style.display = 'none';
+    document.getElementById('calibMsg').textContent =
+      'Log actual temperature readings during a firing to calibrate your kiln\'s real rates.';
+    return;
+  }
+
+  countEl.textContent = calibPoints.length + ' readings';
+  countEl.style.display = 'inline';
+  document.getElementById('calibMsg').textContent = '';
+
+  calibPoints.forEach((pt, i) => {
+    const displayTemp = state.unit === 'C' ? Math.round((pt.tempF-32)*5/9) : pt.tempF;
+    // Clock time
+    let clockStr = '—';
+    if (startMs) {
+      const d = new Date(startMs + pt.elapsedMin * 60000);
+      const hh = d.getHours(), mm = d.getMinutes();
+      const ampm = hh >= 12 ? 'PM' : 'AM';
+      clockStr = `${hh%12||12}:${String(mm).padStart(2,'0')} ${ampm}`;
+    }
+
+    let rateCell = '—', vsCell = '—';
+    if (i > 0) {
+      const prev = calibPoints[i-1];
+      const dTemp = Math.abs(pt.tempF - prev.tempF);
+      const dMin  = pt.elapsedMin - prev.elapsedMin;
+      const actualRate = dMin > 0.1 ? Math.round(dTemp / dMin * 60) : 9999;
+      const midTemp = (pt.tempF + prev.tempF) / 2;
+      const progRate = programmedRateAt(midTemp);
+      const cls = rateClass(actualRate, progRate);
+      const rateDisplay = actualRate >= 9999 ? 'MAX' :
+        (state.unit === 'C' ? Math.round(actualRate*5/9) : actualRate);
+      rateCell = `<span class="${cls}">${rateDisplay}${ul}/hr</span>`;
+      if (progRate < 9999) {
+        const progDisplay = state.unit === 'C' ? Math.round(progRate*5/9) : progRate;
+        const pct = Math.round(actualRate/progRate*100);
+        vsCell = `${progDisplay}${ul}/hr <span class="${cls}">(${pct}%)</span>`;
+      } else {
+        vsCell = 'MAX';
+      }
+    }
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td>${clockStr}</td>
+      <td>${fmtMin(pt.elapsedMin)}</td>
+      <td>${displayTemp}${ul}</td>
+      <td>${rateCell}</td>
+      <td style="font-size:0.72rem;color:var(--text2)">${vsCell}</td>
+      <td><button class="seg-action-btn danger" style="padding:2px 8px;font-size:0.7rem"
+          onclick="removeCalibPoint(${i})">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function updateCalibChart() {
+  if (!chart || !timeline) return;
+  if (calibPoints.length === 0) {
+    chart.data.datasets[1].data = [];
+    chart.update('none');
+    return;
+  }
+  // If no session, we can't map to elapsed minutes — skip
+  const pts = calibPoints.map(pt => ({
+    x: pt.elapsedMin,
+    y: state.unit === 'C' ? Math.round((pt.tempF-32)*5/9) : pt.tempF,
+  }));
+  chart.data.datasets[1].data = pts;
+  chart.update('none');
+}
+
+function applyCalibration() {
+  if (calibPoints.length < 2) {
+    alert('Need at least 2 readings to calibrate. Add more temperature readings first.');
+    return;
+  }
+  const pts = [...calibPoints].sort((a,b) => a.elapsedMin - b.elapsedMin);
+
+  // Build intervals from consecutive calib points
+  const intervals = [];
+  for (let i = 1; i < pts.length; i++) {
+    const dTemp = Math.abs(pts[i].tempF - pts[i-1].tempF);
+    const dMin  = pts[i].elapsedMin - pts[i-1].elapsedMin;
+    intervals.push({
+      fromTemp: pts[i-1].tempF, toTemp: pts[i].tempF,
+      actualRate: dMin > 0.1 ? Math.round(dTemp / dMin * 60) : 9999,
+    });
+  }
+
+  // Map each segment to best-fitting interval by temperature overlap
+  const segsF = getSegmentsF(state.type, state.speed);
+  let prevTemp = 70;
+  const newSegs = segsF.map(seg => {
+    const segLo = Math.min(prevTemp, seg.temp);
+    const segHi = Math.max(prevTemp, seg.temp);
+    let bestInterval = null, bestOverlap = 0;
+    for (const iv of intervals) {
+      const ivLo = Math.min(iv.fromTemp, iv.toTemp);
+      const ivHi = Math.max(iv.fromTemp, iv.toTemp);
+      const overlap = Math.max(0, Math.min(ivHi, segHi) - Math.max(ivLo, segLo));
+      if (overlap > bestOverlap) { bestOverlap = overlap; bestInterval = iv; }
+    }
+    const newRate = (bestInterval && bestOverlap > 10 && seg.rate < 9999)
+      ? Math.max(1, bestInterval.actualRate) : seg.rate;
+    const result = { rate: newRate, temp: seg.temp, hold: seg.hold };
+    prevTemp = seg.temp;
+    return result;
+  });
+
+  // Save directly in °F
+  if (!customPrograms[state.type]) customPrograms[state.type] = {};
+  customPrograms[state.type][state.speed] = newSegs;
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(customPrograms));
+
+  rebuildTimeline();
+  renderSegTable();
+  updateModifiedBadge();
+  document.getElementById('calibMsg').textContent =
+    '✔ Calibrated rates applied. Check Program Segments to review — you can fine-tune from there.';
+}
+
+function resetCalibNowBtn() {
+  const now = new Date();
+  document.getElementById('calibTime').value =
+    `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+}
+
+// Wire calibration buttons
+document.getElementById('calibAddBtn').addEventListener('click', addCalibPoint);
+document.getElementById('calibNowBtn').addEventListener('click', resetCalibNowBtn);
+document.getElementById('calibClearBtn').addEventListener('click', clearCalibration);
+document.getElementById('calibApplyBtn').addEventListener('click', applyCalibration);
+
 function rebuildTimeline() {
   document.getElementById('completeBanner').classList.remove('show');
   const segs = programInUnit(state.type, state.speed, state.unit);
@@ -1234,6 +1550,7 @@ function rebuildTimeline() {
 // ── Boot ──────────────────────────────────────────────────────────────────
 loadCustomPrograms();
 resetStartTimeInput();
+resetCalibNowBtn();
 initChart();
 rebuildTimeline();
 // Must happen after chart is ready
