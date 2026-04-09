@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fireglass — Kiln Progress Tracker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d0d;
+      --surface: #181818;
+      --surface2: #222;
+      --border: #2e2e2e;
+      --text: #f0f0f0;
+      --text2: #aaa;
+      --text3: #666;
+      --fire: #ff6a00;
+      --fire-light: #ffaa44;
+      --fire-dim: rgba(255,106,0,0.18);
+      --green: #44dd88;
+      --blue: #44aaff;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .logo { font-size: 1.35rem; font-weight: 700; letter-spacing: 0.06em; color: var(--fire); }
+    .logo span { color: var(--text); }
+    .unit-toggle { display: flex; gap: 6px; }
+    .unit-btn {
+      padding: 6px 16px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text2);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .unit-btn.active { background: var(--fire); border-color: var(--fire); color: #fff; }
+
+    /* ── Main ── */
+    main { flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 14px; max-width: 900px; width: 100%; margin: 0 auto; }
+
+    /* ── Selector groups ── */
+    .selector-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .seg-btn {
+      flex: 1;
+      min-width: 90px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text2);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+    }
+    .seg-btn:hover { border-color: var(--fire); color: var(--fire); }
+    .seg-btn.active { background: var(--fire); border-color: var(--fire); color: #fff; }
+    .speed-btn.active-slow { background: #2a5; border-color: #2a5; color: #fff; }
+    .speed-btn.active-med  { background: #d80; border-color: #d80; color: #fff; }
+    .speed-btn.active-fast { background: #c22; border-color: #c22; color: #fff; }
+
+    /* ── Duration badge ── */
+    .duration-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      background: var(--surface);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-size: 0.82rem;
+      color: var(--text2);
+    }
+    .duration-row strong { color: var(--fire-light); }
+
+    /* ── Chart ── */
+    .chart-wrap {
+      position: relative;
+      background: var(--surface);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 14px 14px 10px;
+    }
+    .chart-wrap canvas { display: block; width: 100% !important; }
+
+    /* ── Phase legend ── */
+    .phase-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.72rem;
+      color: var(--text2);
+    }
+    .legend-dot {
+      width: 10px; height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── Status panel ── */
+    .status-panel {
+      background: var(--surface);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 14px;
+    }
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 14px;
+    }
+    @media (min-width: 500px) { .status-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (min-width: 700px) { .status-grid { grid-template-columns: repeat(4, 1fr); } }
+
+    .stat-box {
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+    }
+    .stat-label { font-size: 0.68rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+    .stat-value { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+    .stat-value.fire { color: var(--fire-light); }
+    .stat-value.green { color: var(--green); }
+
+    /* progress bar */
+    .progress-wrap { margin-top: 12px; }
+    .progress-label { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text2); margin-bottom: 6px; }
+    .progress-track {
+      height: 8px;
+      background: var(--surface2);
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #cc4400, var(--fire), var(--fire-light));
+      border-radius: 4px;
+      transition: width 0.8s linear;
+    }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      gap: 10px;
+    }
+    .btn {
+      flex: 1;
+      padding: 14px;
+      border-radius: 10px;
+      border: none;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-start {
+      background: var(--fire);
+      color: #fff;
+    }
+    .btn-start:hover:not(:disabled) { background: var(--fire-light); }
+    .btn-stop {
+      background: var(--surface2);
+      color: var(--text2);
+      border: 1px solid var(--border);
+      flex: 0 0 auto;
+      padding: 14px 20px;
+    }
+    .btn-stop:hover:not(:disabled) { border-color: #c33; color: #c33; }
+
+    /* ── Complete banner ── */
+    .complete-banner {
+      display: none;
+      background: linear-gradient(135deg, #1a3a1a, #0d200d);
+      border: 1px solid var(--green);
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+      color: var(--green);
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+    .complete-banner.show { display: block; }
+
+    /* ── Segment table ── */
+    .seg-table-wrap {
+      background: var(--surface);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      overflow: auto;
+    }
+    .seg-table-wrap summary {
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      color: var(--text2);
+      user-select: none;
+    }
+    .seg-table-wrap summary:hover { color: var(--fire); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+    th, td {
+      padding: 7px 10px;
+      text-align: right;
+      border-top: 1px solid var(--border);
+    }
+    th { color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+    td:first-child, th:first-child { text-align: left; }
+    tr.current-row td { color: var(--fire-light); background: rgba(255,106,0,0.07); }
+    tr.done-row td { color: var(--text3); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">FIRE<span>GLASS</span></div>
+  <div class="unit-toggle">
+    <button class="unit-btn active" data-unit="F">°F</button>
+    <button class="unit-btn" data-unit="C">°C</button>
+  </div>
+</header>
+
+<main>
+  <!-- Program type -->
+  <div class="selector-row" id="typeRow">
+    <button class="seg-btn active" data-type="Full Fuse">Full Fuse</button>
+    <button class="seg-btn" data-type="Tack Fuse">Tack Fuse</button>
+    <button class="seg-btn" data-type="Slump">Slump</button>
+  </div>
+
+  <!-- Speed -->
+  <div class="selector-row" id="speedRow">
+    <button class="seg-btn speed-btn active active-slow" data-speed="SLOW">SLOW</button>
+    <button class="seg-btn speed-btn active-med" data-speed="MED">MED</button>
+    <button class="seg-btn speed-btn active-fast" data-speed="FAST">FAST</button>
+  </div>
+
+  <!-- Duration info -->
+  <div class="duration-row">
+    <span>Total duration: <strong id="totalDur">—</strong></span>
+    <span id="endTimeLabel" style="color:var(--text3)"></span>
+  </div>
+
+  <!-- Chart -->
+  <div class="chart-wrap">
+    <canvas id="tempChart" height="300"></canvas>
+    <div class="phase-legend" id="phaseLegend"></div>
+  </div>
+
+  <!-- Status -->
+  <div class="status-panel">
+    <div class="status-grid">
+      <div class="stat-box">
+        <div class="stat-label">Phase</div>
+        <div class="stat-value" id="statPhase">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Segment</div>
+        <div class="stat-value" id="statSeg">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Current Temp</div>
+        <div class="stat-value fire" id="statTemp">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Target Temp</div>
+        <div class="stat-value" id="statTarget">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Elapsed</div>
+        <div class="stat-value" id="statElapsed">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Remaining</div>
+        <div class="stat-value" id="statRemain">—</div>
+      </div>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-label">
+        <span>Progress</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+  </div>
+
+  <!-- Complete banner -->
+  <div class="complete-banner" id="completeBanner">FIRING COMPLETE</div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn btn-start" id="startBtn">▶ START FIRING</button>
+    <button class="btn btn-stop" id="stopBtn" disabled>■ STOP</button>
+  </div>
+
+  <!-- Segment table -->
+  <details class="seg-table-wrap" id="segDetails">
+    <summary>Program Segments</summary>
+    <table id="segTable">
+      <thead>
+        <tr>
+          <th>#</th><th>Phase</th><th>Rate</th><th>Target</th>
+          <th>Travel</th><th>Hold</th><th>Seg Total</th>
+        </tr>
+      </thead>
+      <tbody id="segTableBody"></tbody>
+    </table>
+  </details>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+'use strict';
+
+// ── Program data (Fahrenheit) ──────────────────────────────────────────────
+// Each segment: { rate: °F/hr, temp: °F, hold: minutes }
+// rate=9999 means "as fast as possible" (instantaneous drop)
+
+const PROGRAMS_F = {
+  'Full Fuse': {
+    SLOW: [
+      {rate:300,  temp:250,  hold:25},
+      {rate:300,  temp:500,  hold:25},
+      {rate:300,  temp:750,  hold:25},
+      {rate:600,  temp:1250, hold:20},
+      {rate:600,  temp:1480, hold:15},
+      {rate:9999, temp:1000, hold:120},
+      {rate:30,   temp:970,  hold:120},
+      {rate:8,    temp:70,   hold:1},
+    ],
+    MED: [
+      {rate:500,  temp:250,  hold:12},
+      {rate:500,  temp:500,  hold:12},
+      {rate:500,  temp:750,  hold:12},
+      {rate:600,  temp:1250, hold:20},
+      {rate:600,  temp:1480, hold:15},
+      {rate:9999, temp:1000, hold:60},
+      {rate:90,   temp:970,  hold:60},
+      {rate:8,    temp:120,  hold:1},
+    ],
+    FAST: [
+      {rate:800,  temp:250,  hold:5},
+      {rate:800,  temp:500,  hold:5},
+      {rate:800,  temp:750,  hold:5},
+      {rate:600,  temp:1250, hold:20},
+      {rate:600,  temp:1480, hold:15},
+      {rate:9999, temp:1000, hold:10},
+      {rate:200,  temp:975,  hold:20},
+      {rate:8,    temp:750,  hold:1},
+    ],
+  },
+  'Tack Fuse': {
+    SLOW: [
+      {rate:300,  temp:250,  hold:25},
+      {rate:300,  temp:500,  hold:25},
+      {rate:300,  temp:750,  hold:25},
+      {rate:600,  temp:1250, hold:20},
+      {rate:600,  temp:1350, hold:10},
+      {rate:9999, temp:1000, hold:60},
+      {rate:30,   temp:970,  hold:60},
+      {rate:8,    temp:70,   hold:1},
+    ],
+    MED: [
+      {rate:500,  temp:250,  hold:12},
+      {rate:500,  temp:500,  hold:12},
+      {rate:500,  temp:750,  hold:12},
+      {rate:600,  temp:1250, hold:20},
+      {rate:600,  temp:1350, hold:10},
+      {rate:9999, temp:1000, hold:60},
+      {rate:90,   temp:970,  hold:60},
+      {rate:8,    temp:120,  hold:1},
+    ],
+    FAST: [
+      {rate:800,  temp:250,  hold:5},
+      {rate:800,  temp:500,  hold:5},
+      {rate:800,  temp:750,  hold:5},
+      {rate:600,  temp:1250, hold:20},
+      {rate:600,  temp:1350, hold:10},
+      {rate:9999, temp:1000, hold:10},
+      {rate:200,  temp:975,  hold:20},
+      {rate:8,    temp:750,  hold:1},
+    ],
+  },
+  'Slump': {
+    SLOW: [
+      {rate:300,  temp:250,  hold:25},
+      {rate:300,  temp:500,  hold:25},
+      {rate:300,  temp:750,  hold:25},
+      {rate:600,  temp:1150, hold:5},
+      {rate:600,  temp:1220, hold:5},
+      {rate:9999, temp:1000, hold:120},
+      {rate:30,   temp:970,  hold:120},
+      {rate:8,    temp:70,   hold:1},
+    ],
+    MED: [
+      {rate:500,  temp:250,  hold:12},
+      {rate:500,  temp:500,  hold:12},
+      {rate:500,  temp:750,  hold:12},
+      {rate:600,  temp:1100, hold:5},
+      {rate:600,  temp:1220, hold:5},
+      {rate:9999, temp:1000, hold:60},
+      {rate:90,   temp:970,  hold:60},
+      {rate:8,    temp:120,  hold:1},
+    ],
+    FAST: [
+      {rate:800,  temp:250,  hold:5},
+      {rate:800,  temp:500,  hold:5},
+      {rate:800,  temp:750,  hold:5},
+      {rate:600,  temp:1100, hold:5},
+      {rate:600,  temp:1220, hold:5},
+      {rate:9999, temp:1000, hold:10},
+      {rate:200,  temp:975,  hold:20},
+      {rate:8,    temp:750,  hold:1},
+    ],
+  },
+};
+
+// ── Unit conversion helpers ────────────────────────────────────────────────
+function fToC(f) { return Math.round((f - 32) * 5 / 9); }
+function rateToC(r) { return r >= 9999 ? 9999 : Math.round(r * 5 / 9); }
+
+function programInUnit(type, speed, unit) {
+  const segs = PROGRAMS_F[type][speed];
+  if (unit === 'F') return segs;
+  return segs.map(s => ({ rate: rateToC(s.rate), temp: fToC(s.temp), hold: s.hold }));
+}
+
+function startTemp(unit) { return unit === 'F' ? 70 : 21; }
+function unitLabel(unit) { return unit === 'F' ? '°F' : '°C'; }
+
+// ── Phase label ────────────────────────────────────────────────────────────
+const PHASE_NAMES = [
+  ['Pre-heat Ramp 1', 'Pre-heat Hold 1'],
+  ['Pre-heat Ramp 2', 'Pre-heat Hold 2'],
+  ['Pre-heat Ramp 3', 'Pre-heat Hold 3'],
+  ['Firing Ramp',     'Firing Hold'],
+  ['Peak Ramp',       'Peak Hold'],
+  ['Flash Cool',      'Anneal Soak'],
+  ['Anneal Ramp',     'Anneal Hold'],
+  ['Final Cooling',   'Complete'],
+];
+function phaseLabel(segIdx, isRamp) {
+  const names = PHASE_NAMES[segIdx] || [`Seg ${segIdx+1} Ramp`, `Seg ${segIdx+1} Hold`];
+  return isRamp ? names[0] : names[1];
+}
+
+// Phase zone colors for background shading
+const ZONE_COLORS = [
+  'rgba(70,100,160,0.08)',   // pre-heat 1
+  'rgba(70,100,160,0.08)',
+  'rgba(70,100,160,0.08)',
+  'rgba(200,80,0,0.10)',     // firing
+  'rgba(220,40,0,0.14)',     // peak
+  'rgba(60,60,200,0.10)',    // flash cool
+  'rgba(30,120,100,0.10)',   // anneal
+  'rgba(30,120,100,0.08)',   // final cool
+];
+
+// ── Timeline builder ───────────────────────────────────────────────────────
+function buildTimeline(segments, initTemp) {
+  const phases = [];
+  let prevTemp = initTemp;
+  let cumMin = 0;
+
+  segments.forEach((seg, i) => {
+    const travelMin = seg.rate >= 9999 ? 0
+      : Math.abs(seg.temp - prevTemp) / seg.rate * 60;
+
+    if (travelMin > 0.01) {
+      phases.push({
+        type: 'ramp', segIndex: i,
+        startMin: cumMin, endMin: cumMin + travelMin,
+        startTemp: prevTemp, endTemp: seg.temp,
+        label: phaseLabel(i, true),
+        zone: ZONE_COLORS[i] || 'rgba(255,255,255,0.04)',
+      });
+      cumMin += travelMin;
+    }
+    if (seg.hold > 0) {
+      phases.push({
+        type: 'hold', segIndex: i,
+        startMin: cumMin, endMin: cumMin + seg.hold,
+        startTemp: seg.temp, endTemp: seg.temp,
+        label: phaseLabel(i, false),
+        zone: ZONE_COLORS[i] || 'rgba(255,255,255,0.04)',
+      });
+      cumMin += seg.hold;
+    }
+    prevTemp = seg.temp;
+  });
+
+  return { phases, totalMin: cumMin };
+}
+
+// Build chart data points from timeline
+function buildChartPoints(phases, initTemp) {
+  const pts = [{ x: 0, y: initTemp }];
+  phases.forEach(ph => {
+    pts.push({ x: ph.endMin, y: ph.endTemp });
+  });
+  return pts;
+}
+
+// ── Format helpers ─────────────────────────────────────────────────────────
+function fmtMin(totalMin) {
+  const h = Math.floor(totalMin / 60);
+  const m = Math.round(totalMin % 60);
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+function fmtMs(ms) {
+  if (ms < 0) ms = 0;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = n => String(n).padStart(2, '0');
+  if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
+  return `${pad(m)}:${pad(s)}`;
+}
+
+// ── State ──────────────────────────────────────────────────────────────────
+let state = {
+  type: 'Full Fuse',
+  speed: 'SLOW',
+  unit: 'F',
+  startTime: null,   // epoch ms
+  timer: null,
+};
+let timeline = null;   // { phases, totalMin }
+let chart = null;
+
+// ── Interpolation ──────────────────────────────────────────────────────────
+function getCurrentState(elapsedMin) {
+  const { phases, totalMin } = timeline;
+  if (elapsedMin >= totalMin) {
+    const last = phases[phases.length - 1];
+    return { phase: last, currentTemp: last.endTemp, done: true, pct: 100 };
+  }
+  for (const ph of phases) {
+    if (elapsedMin >= ph.startMin && elapsedMin < ph.endMin) {
+      const dur = ph.endMin - ph.startMin;
+      const frac = dur > 0 ? (elapsedMin - ph.startMin) / dur : 1;
+      const currentTemp = ph.startTemp + (ph.endTemp - ph.startTemp) * frac;
+      return {
+        phase: ph,
+        currentTemp,
+        done: false,
+        pct: (elapsedMin / totalMin) * 100,
+      };
+    }
+  }
+  return { phase: phases[0], currentTemp: phases[0].startTemp, done: false, pct: 0 };
+}
+
+// ── Chart setup ───────────────────────────────────────────────────────────
+const vertLinePlugin = {
+  id: 'vertLine',
+  afterDraw(chart) {
+    const opts = chart.options.plugins.vertLine;
+    if (opts.x == null) return;
+    const { ctx, scales: { x: xs, y: ys } } = chart;
+    const px = xs.getPixelForValue(opts.x);
+    ctx.save();
+    // dashed vertical line
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(px, ys.top);
+    ctx.lineTo(px, ys.bottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // current-temp dot
+    const py = ys.getPixelForValue(opts.y);
+    ctx.beginPath();
+    ctx.arc(px, py, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff6a00';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+};
+
+// Zone background plugin
+const zoneBgPlugin = {
+  id: 'zoneBg',
+  beforeDraw(chart) {
+    const opts = chart.options.plugins.zoneBg;
+    if (!opts || !opts.zones) return;
+    const { ctx, scales: { x: xs, y: ys } } = chart;
+    ctx.save();
+    opts.zones.forEach(z => {
+      const x1 = xs.getPixelForValue(z.from);
+      const x2 = xs.getPixelForValue(z.to);
+      ctx.fillStyle = z.color;
+      ctx.fillRect(x1, ys.top, x2 - x1, ys.bottom - ys.top);
+    });
+    ctx.restore();
+  }
+};
+
+Chart.register(vertLinePlugin, zoneBgPlugin);
+
+function initChart() {
+  const ctx = document.getElementById('tempChart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        data: [],
+        parsing: false,
+        borderColor: '#ff6a00',
+        borderWidth: 2.5,
+        backgroundColor: 'rgba(255,106,0,0.12)',
+        fill: true,
+        tension: 0,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+      }]
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'Time (minutes)', color: '#666', font: { size: 11 } },
+          grid: { color: '#1e1e1e' },
+          ticks: {
+            color: '#777',
+            font: { size: 10 },
+            callback: v => {
+              const h = Math.floor(v / 60);
+              const m = Math.round(v % 60);
+              return h > 0 ? (m === 0 ? `${h}h` : `${h}h${m}m`) : `${m}m`;
+            },
+            maxTicksLimit: 12,
+          },
+        },
+        y: {
+          title: { display: true, text: `Temperature (${unitLabel(state.unit)})`, color: '#666', font: { size: 11 } },
+          grid: { color: '#1e1e1e' },
+          ticks: { color: '#777', font: { size: 10 } },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#222',
+          borderColor: '#333',
+          borderWidth: 1,
+          titleColor: '#aaa',
+          bodyColor: '#f0f0f0',
+          callbacks: {
+            title: items => fmtMin(items[0].parsed.x),
+            label: item => `${Math.round(item.parsed.y)}${unitLabel(state.unit)}`,
+          },
+        },
+        vertLine: { x: null, y: null },
+        zoneBg: { zones: [] },
+      },
+    },
+  });
+}
+
+function refreshChart() {
+  if (!chart || !timeline) return;
+  const unit = state.unit;
+  const segs = programInUnit(state.type, state.speed, unit);
+  const init = startTemp(unit);
+  timeline = buildTimeline(segs, init);
+
+  const pts = buildChartPoints(timeline.phases, init);
+  chart.data.datasets[0].data = pts;
+
+  // zone backgrounds
+  const zones = [];
+  let prevEnd = 0;
+  timeline.phases.forEach(ph => {
+    if (ph.startMin > prevEnd || zones.length === 0 ||
+        zones[zones.length-1].color !== ph.zone) {
+      zones.push({ from: ph.startMin, to: ph.endMin, color: ph.zone });
+    } else {
+      zones[zones.length-1].to = ph.endMin;
+    }
+    prevEnd = ph.endMin;
+  });
+  chart.options.plugins.zoneBg.zones = zones;
+
+  // y-axis label
+  chart.options.scales.y.title.text = `Temperature (${unitLabel(unit)})`;
+
+  // segment boundary ticks as vertical dotted lines using tick marks
+  // reset progress line
+  chart.options.plugins.vertLine.x = null;
+  chart.options.plugins.vertLine.y = null;
+
+  chart.update('none');
+  updateDurationDisplay();
+  renderSegTable();
+  renderPhaseLegend();
+}
+
+// ── Duration display ───────────────────────────────────────────────────────
+function updateDurationDisplay() {
+  if (!timeline) return;
+  document.getElementById('totalDur').textContent = fmtMin(timeline.totalMin);
+  if (state.startTime) {
+    const endEpoch = state.startTime + timeline.totalMin * 60000;
+    const endDate = new Date(endEpoch);
+    const h = endDate.getHours();
+    const m = endDate.getMinutes();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const hh = h % 12 || 12;
+    document.getElementById('endTimeLabel').textContent =
+      `Finishes ~${hh}:${String(m).padStart(2,'0')} ${ampm}`;
+  } else {
+    document.getElementById('endTimeLabel').textContent = '';
+  }
+}
+
+// ── Segment table ──────────────────────────────────────────────────────────
+function renderSegTable() {
+  if (!timeline) return;
+  const unit = state.unit;
+  const ul = unitLabel(unit);
+  const segs = programInUnit(state.type, state.speed, unit);
+  const init = startTemp(unit);
+  const tbody = document.getElementById('segTableBody');
+  tbody.innerHTML = '';
+  let prevTemp = init;
+  segs.forEach((seg, i) => {
+    const travelMin = seg.rate >= 9999 ? 0 : Math.abs(seg.temp - prevTemp) / seg.rate * 60;
+    const totalMin = travelMin + seg.hold;
+    const rateStr = seg.rate >= 9999 ? 'MAX' : seg.rate + ul+'/hr';
+    const tr = document.createElement('tr');
+    tr.dataset.seg = i;
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td>${PHASE_NAMES[i] ? PHASE_NAMES[i][0].replace(' Ramp','').replace(' Hold','') : 'Seg '+(i+1)}</td>
+      <td>${rateStr}</td>
+      <td>${seg.temp}${ul}</td>
+      <td>${travelMin > 0 ? fmtMin(travelMin) : '—'}</td>
+      <td>${seg.hold > 0 ? fmtMin(seg.hold) : '—'}</td>
+      <td>${fmtMin(totalMin)}</td>
+    `;
+    tbody.appendChild(tr);
+    prevTemp = seg.temp;
+  });
+}
+
+// ── Phase legend ───────────────────────────────────────────────────────────
+const LEGEND_ITEMS = [
+  { color: 'rgba(70,100,160,0.5)', label: 'Pre-Process Heating' },
+  { color: 'rgba(200,80,0,0.5)',   label: 'Firing' },
+  { color: 'rgba(220,40,0,0.6)',   label: 'Peak / Process' },
+  { color: 'rgba(60,60,200,0.5)',  label: 'Pre-Anneal Cool' },
+  { color: 'rgba(30,120,100,0.5)', label: 'Annealing' },
+];
+function renderPhaseLegend() {
+  const el = document.getElementById('phaseLegend');
+  el.innerHTML = LEGEND_ITEMS.map(l =>
+    `<div class="legend-item">
+       <div class="legend-dot" style="background:${l.color}"></div>
+       <span>${l.label}</span>
+     </div>`
+  ).join('');
+}
+
+// ── Tick (every second) ────────────────────────────────────────────────────
+function tick() {
+  if (!state.startTime || !timeline) return;
+  const elapsedMs = Date.now() - state.startTime;
+  const elapsedMin = elapsedMs / 60000;
+  const { phase, currentTemp, done, pct } = getCurrentState(elapsedMin);
+  const unit = unitLabel(state.unit);
+  const remainMs = Math.max(0, (timeline.totalMin * 60000) - elapsedMs);
+
+  // Status panel
+  document.getElementById('statPhase').textContent = phase.label;
+  document.getElementById('statSeg').textContent = `${phase.segIndex + 1} / 8`;
+  document.getElementById('statTemp').textContent = `${Math.round(currentTemp)}${unit}`;
+  document.getElementById('statTarget').textContent = `${Math.round(phase.endTemp)}${unit}`;
+  document.getElementById('statElapsed').textContent = fmtMs(elapsedMs);
+  document.getElementById('statRemain').textContent = done ? '—' : fmtMs(remainMs);
+  document.getElementById('progressPct').textContent = `${Math.round(pct)}%`;
+  document.getElementById('progressFill').style.width = pct + '%';
+
+  // Highlight table row
+  document.querySelectorAll('#segTableBody tr').forEach(tr => {
+    const idx = parseInt(tr.dataset.seg);
+    tr.classList.remove('current-row', 'done-row');
+    if (idx === phase.segIndex && !done) tr.classList.add('current-row');
+    else if (idx < phase.segIndex || done) tr.classList.add('done-row');
+  });
+
+  // Chart progress line
+  if (chart) {
+    chart.options.plugins.vertLine.x = elapsedMin;
+    chart.options.plugins.vertLine.y = currentTemp;
+    chart.update('none');
+  }
+
+  if (done) {
+    stopSession(true);
+  }
+
+  updateDurationDisplay();
+}
+
+// ── Session control ────────────────────────────────────────────────────────
+const LS_KEY = 'fireglass_session';
+
+function startSession() {
+  if (!timeline) return;
+  state.startTime = Date.now();
+  saveSession();
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+  document.getElementById('completeBanner').classList.remove('show');
+  // disable selectors during firing
+  document.querySelectorAll('.seg-btn').forEach(b => b.disabled = true);
+  document.querySelectorAll('.unit-btn').forEach(b => b.disabled = true);
+  state.timer = setInterval(tick, 1000);
+  tick();
+  updateDurationDisplay();
+}
+
+function stopSession(complete = false) {
+  clearInterval(state.timer);
+  state.timer = null;
+  state.startTime = null;
+  localStorage.removeItem(LS_KEY);
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  document.querySelectorAll('.seg-btn').forEach(b => b.disabled = false);
+  document.querySelectorAll('.unit-btn').forEach(b => b.disabled = false);
+  if (complete) {
+    document.getElementById('completeBanner').classList.add('show');
+  }
+  // Clear progress line
+  if (chart) {
+    chart.options.plugins.vertLine.x = null;
+    chart.options.plugins.vertLine.y = null;
+    chart.update('none');
+  }
+  // Reset status panel
+  ['statPhase','statSeg','statTemp','statTarget','statElapsed','statRemain'].forEach(id => {
+    document.getElementById(id).textContent = '—';
+  });
+  document.getElementById('progressPct').textContent = '0%';
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('endTimeLabel').textContent = '';
+  document.querySelectorAll('#segTableBody tr').forEach(tr => tr.classList.remove('current-row','done-row'));
+}
+
+function saveSession() {
+  localStorage.setItem(LS_KEY, JSON.stringify({
+    type: state.type,
+    speed: state.speed,
+    unit: state.unit,
+    startTime: state.startTime,
+  }));
+}
+
+function restoreSession() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    // check it's still valid
+    if (!PROGRAMS_F[saved.type] || !PROGRAMS_F[saved.type][saved.speed]) return;
+    const segs = programInUnit(saved.type, saved.speed, saved.unit);
+    const tl = buildTimeline(segs, startTemp(saved.unit));
+    const elapsed = (Date.now() - saved.startTime) / 60000;
+    if (elapsed >= tl.totalMin) { localStorage.removeItem(LS_KEY); return; }
+
+    // apply saved settings
+    state.type = saved.type;
+    state.speed = saved.speed;
+    state.unit = saved.unit;
+
+    // update UI selectors
+    document.querySelectorAll('[data-type]').forEach(b =>
+      b.classList.toggle('active', b.dataset.type === state.type));
+    document.querySelectorAll('[data-speed]').forEach(b => {
+      b.classList.remove('active','active-slow','active-med','active-fast');
+      if (b.dataset.speed === state.speed) {
+        b.classList.add('active', `active-${state.speed.toLowerCase()}`);
+      }
+    });
+    document.querySelectorAll('[data-unit]').forEach(b =>
+      b.classList.toggle('active', b.dataset.unit === state.unit));
+
+    timeline = tl;
+    refreshChart();
+
+    // resume
+    state.startTime = saved.startTime;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    document.querySelectorAll('.seg-btn').forEach(b => b.disabled = true);
+    document.querySelectorAll('.unit-btn').forEach(b => b.disabled = true);
+    state.timer = setInterval(tick, 1000);
+    tick();
+    updateDurationDisplay();
+  } catch (e) {
+    localStorage.removeItem(LS_KEY);
+  }
+}
+
+// ── UI wiring ──────────────────────────────────────────────────────────────
+const startBtn = document.getElementById('startBtn');
+const stopBtn  = document.getElementById('stopBtn');
+
+document.getElementById('typeRow').addEventListener('click', e => {
+  const btn = e.target.closest('[data-type]');
+  if (!btn) return;
+  state.type = btn.dataset.type;
+  document.querySelectorAll('[data-type]').forEach(b =>
+    b.classList.toggle('active', b === btn));
+  rebuildTimeline();
+});
+
+document.getElementById('speedRow').addEventListener('click', e => {
+  const btn = e.target.closest('[data-speed]');
+  if (!btn) return;
+  state.speed = btn.dataset.speed;
+  document.querySelectorAll('[data-speed]').forEach(b => {
+    b.classList.remove('active','active-slow','active-med','active-fast');
+  });
+  btn.classList.add('active', `active-${state.speed.toLowerCase()}`);
+  rebuildTimeline();
+});
+
+document.querySelector('.unit-toggle').addEventListener('click', e => {
+  const btn = e.target.closest('[data-unit]');
+  if (!btn) return;
+  state.unit = btn.dataset.unit;
+  document.querySelectorAll('[data-unit]').forEach(b =>
+    b.classList.toggle('active', b === btn));
+  rebuildTimeline();
+});
+
+startBtn.addEventListener('click', startSession);
+stopBtn.addEventListener('click', () => stopSession(false));
+
+function rebuildTimeline() {
+  document.getElementById('completeBanner').classList.remove('show');
+  const segs = programInUnit(state.type, state.speed, state.unit);
+  const init = startTemp(state.unit);
+  timeline = buildTimeline(segs, init);
+  refreshChart();
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+initChart();
+rebuildTimeline();
+// Must happen after chart is ready
+document.getElementById('tempChart').parentElement.style.height = '320px';
+chart.resize();
+restoreSession();
+</script>
+</body>
+</html>
