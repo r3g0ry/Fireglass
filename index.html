@@ -169,6 +169,48 @@
       transition: width 0.8s linear;
     }
 
+    /* ── Start time picker ── */
+    .start-time-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+    }
+    .start-time-row label {
+      font-size: 0.8rem;
+      color: var(--text2);
+      white-space: nowrap;
+    }
+    .start-time-row input[type="time"] {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 6px 10px;
+      cursor: pointer;
+      color-scheme: dark;
+    }
+    .start-time-row input[type="time"]:focus { outline: 1px solid var(--fire); }
+    .now-btn {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text2);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .now-btn:hover { border-color: var(--fire); color: var(--fire); }
+
     /* ── Controls ── */
     .controls {
       display: flex;
@@ -322,6 +364,13 @@
 
   <!-- Complete banner -->
   <div class="complete-banner" id="completeBanner">FIRING COMPLETE</div>
+
+  <!-- Start time picker -->
+  <div class="start-time-row" id="startTimeRow">
+    <label>Started at</label>
+    <input type="time" id="startTimeInput">
+    <button class="now-btn" id="nowBtn">Now</button>
+  </div>
 
   <!-- Controls -->
   <div class="controls">
@@ -854,10 +903,20 @@ const LS_KEY = 'fireglass_session';
 
 function startSession() {
   if (!timeline) return;
-  state.startTime = Date.now();
+
+  // Parse start time from input (may be a past time today)
+  const input = document.getElementById('startTimeInput');
+  const [hh, mm] = input.value.split(':').map(Number);
+  const now = new Date();
+  const picked = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+  // If picked time is more than 1 min in the future, assume it's from yesterday
+  if (picked.getTime() > now.getTime() + 60000) picked.setDate(picked.getDate() - 1);
+  state.startTime = picked.getTime();
+
   saveSession();
   startBtn.disabled = true;
   stopBtn.disabled = false;
+  document.getElementById('startTimeRow').style.display = 'none';
   document.getElementById('completeBanner').classList.remove('show');
   // disable selectors during firing
   document.querySelectorAll('.seg-btn').forEach(b => b.disabled = true);
@@ -876,6 +935,8 @@ function stopSession(complete = false) {
   stopBtn.disabled = true;
   document.querySelectorAll('.seg-btn').forEach(b => b.disabled = false);
   document.querySelectorAll('.unit-btn').forEach(b => b.disabled = false);
+  document.getElementById('startTimeRow').style.display = '';
+  resetStartTimeInput();
   if (complete) {
     document.getElementById('completeBanner').classList.add('show');
   }
@@ -940,6 +1001,7 @@ function restoreSession() {
     state.startTime = saved.startTime;
     startBtn.disabled = true;
     stopBtn.disabled = false;
+    document.getElementById('startTimeRow').style.display = 'none';
     document.querySelectorAll('.seg-btn').forEach(b => b.disabled = true);
     document.querySelectorAll('.unit-btn').forEach(b => b.disabled = true);
     state.timer = setInterval(tick, 1000);
@@ -950,9 +1012,19 @@ function restoreSession() {
   }
 }
 
+// ── Start time input helpers ───────────────────────────────────────────────
+function resetStartTimeInput() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  document.getElementById('startTimeInput').value = `${hh}:${mm}`;
+}
+
 // ── UI wiring ──────────────────────────────────────────────────────────────
 const startBtn = document.getElementById('startBtn');
 const stopBtn  = document.getElementById('stopBtn');
+
+document.getElementById('nowBtn').addEventListener('click', resetStartTimeInput);
 
 document.getElementById('typeRow').addEventListener('click', e => {
   const btn = e.target.closest('[data-type]');
@@ -995,6 +1067,7 @@ function rebuildTimeline() {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
+resetStartTimeInput();
 initChart();
 rebuildTimeline();
 // Must happen after chart is ready
