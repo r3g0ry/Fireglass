@@ -272,6 +272,38 @@
       user-select: none;
     }
     .seg-table-wrap summary:hover { color: var(--fire); }
+
+    /* ── Edit mode ── */
+    .seg-toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 12px; border-bottom: 1px solid var(--border);
+      gap: 8px; flex-wrap: wrap;
+    }
+    .seg-toolbar-note { font-size: 0.75rem; color: var(--text2); }
+    .seg-toolbar-btns { display: flex; gap: 6px; }
+    .seg-action-btn {
+      padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--text2); font-size: 0.76rem;
+      font-weight: 600; cursor: pointer; transition: all 0.15s;
+    }
+    .seg-action-btn:hover { border-color: var(--fire); color: var(--fire); }
+    .seg-action-btn.primary { background: var(--fire); color: #fff; border-color: var(--fire); }
+    .seg-action-btn.primary:hover { background: var(--fire-light); }
+    .seg-action-btn.danger { border-color: #773333; color: #cc5555; }
+    .seg-action-btn.danger:hover { border-color: #cc3333; color: #ff6666; }
+    .modified-badge {
+      display: none; font-size: 0.65rem; background: var(--fire-dim);
+      color: var(--fire-light); border: 1px solid var(--fire);
+      border-radius: 10px; padding: 1px 8px; margin-left: 8px; vertical-align: middle;
+    }
+    .seg-input {
+      width: 72px; background: var(--surface2); border: 1px solid var(--fire);
+      border-radius: 4px; color: var(--text); font-size: 0.8rem;
+      padding: 3px 6px; text-align: right;
+    }
+    .seg-input:focus { outline: none; border-color: var(--fire-light); }
+    .edit-hint { font-size: 0.7rem; color: var(--text3); }
+    td.edit-cell { padding: 4px 6px; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -380,12 +412,22 @@
 
   <!-- Segment table -->
   <details class="seg-table-wrap" id="segDetails">
-    <summary>Program Segments</summary>
+    <summary>Program Segments <span class="modified-badge" id="modifiedBadge">Modified</span></summary>
+    <div class="seg-toolbar" id="segToolbar">
+      <span class="seg-toolbar-note" id="editHint"></span>
+      <div class="seg-toolbar-btns">
+        <button class="seg-action-btn" id="editBtn">✎ Edit</button>
+        <button class="seg-action-btn danger" id="resetBtn" style="display:none">↺ Reset Default</button>
+        <button class="seg-action-btn primary" id="saveBtn" style="display:none">✔ Save</button>
+        <button class="seg-action-btn" id="cancelBtn" style="display:none">✕ Cancel</button>
+      </div>
+    </div>
     <table id="segTable">
       <thead>
         <tr>
-          <th>#</th><th>Phase</th><th>Rate</th><th>Target</th>
-          <th>Travel</th><th>Hold</th><th>Seg Total</th>
+          <th>#</th><th>Phase</th>
+          <th>Rate</th><th>Target</th>
+          <th id="thTravel">Travel</th><th>Hold</th><th id="thTotal">Seg Total</th>
         </tr>
       </thead>
       <tbody id="segTableBody"></tbody>
@@ -411,7 +453,7 @@ const PROGRAMS_F = {
       {rate:600,  temp:1480, hold:15},
       {rate:9999, temp:1000, hold:120},
       {rate:30,   temp:970,  hold:120},
-      {rate:8,    temp:70,   hold:1},
+      {rate:60,   temp:100,  hold:1},
     ],
     MED: [
       {rate:500,  temp:250,  hold:12},
@@ -421,7 +463,7 @@ const PROGRAMS_F = {
       {rate:600,  temp:1480, hold:15},
       {rate:9999, temp:1000, hold:60},
       {rate:90,   temp:970,  hold:60},
-      {rate:8,    temp:120,  hold:1},
+      {rate:90,   temp:100,  hold:1},
     ],
     FAST: [
       {rate:800,  temp:250,  hold:5},
@@ -431,7 +473,7 @@ const PROGRAMS_F = {
       {rate:600,  temp:1480, hold:15},
       {rate:9999, temp:1000, hold:10},
       {rate:200,  temp:975,  hold:20},
-      {rate:8,    temp:750,  hold:1},
+      {rate:200,  temp:750,  hold:1},
     ],
   },
   'Tack Fuse': {
@@ -443,7 +485,7 @@ const PROGRAMS_F = {
       {rate:600,  temp:1350, hold:10},
       {rate:9999, temp:1000, hold:60},
       {rate:30,   temp:970,  hold:60},
-      {rate:8,    temp:70,   hold:1},
+      {rate:60,   temp:100,  hold:1},
     ],
     MED: [
       {rate:500,  temp:250,  hold:12},
@@ -453,7 +495,7 @@ const PROGRAMS_F = {
       {rate:600,  temp:1350, hold:10},
       {rate:9999, temp:1000, hold:60},
       {rate:90,   temp:970,  hold:60},
-      {rate:8,    temp:120,  hold:1},
+      {rate:90,   temp:100,  hold:1},
     ],
     FAST: [
       {rate:800,  temp:250,  hold:5},
@@ -463,7 +505,7 @@ const PROGRAMS_F = {
       {rate:600,  temp:1350, hold:10},
       {rate:9999, temp:1000, hold:10},
       {rate:200,  temp:975,  hold:20},
-      {rate:8,    temp:750,  hold:1},
+      {rate:200,  temp:750,  hold:1},
     ],
   },
   'Slump': {
@@ -475,7 +517,7 @@ const PROGRAMS_F = {
       {rate:600,  temp:1220, hold:5},
       {rate:9999, temp:1000, hold:120},
       {rate:30,   temp:970,  hold:120},
-      {rate:8,    temp:70,   hold:1},
+      {rate:60,   temp:100,  hold:1},
     ],
     MED: [
       {rate:500,  temp:250,  hold:12},
@@ -485,7 +527,7 @@ const PROGRAMS_F = {
       {rate:600,  temp:1220, hold:5},
       {rate:9999, temp:1000, hold:60},
       {rate:90,   temp:970,  hold:60},
-      {rate:8,    temp:120,  hold:1},
+      {rate:90,   temp:100,  hold:1},
     ],
     FAST: [
       {rate:800,  temp:250,  hold:5},
@@ -495,17 +537,58 @@ const PROGRAMS_F = {
       {rate:600,  temp:1220, hold:5},
       {rate:9999, temp:1000, hold:10},
       {rate:200,  temp:975,  hold:20},
-      {rate:8,    temp:750,  hold:1},
+      {rate:200,  temp:750,  hold:1},
     ],
   },
 };
 
 // ── Unit conversion helpers ────────────────────────────────────────────────
 function fToC(f) { return Math.round((f - 32) * 5 / 9); }
+function cToF(c) { return Math.round(c * 9 / 5 + 32); }
 function rateToC(r) { return r >= 9999 ? 9999 : Math.round(r * 5 / 9); }
+function rateCToF(r) { return r >= 9999 ? 9999 : Math.round(r * 9 / 5); }
+
+// ── Custom program overrides ───────────────────────────────────────────────
+const CUSTOM_KEY = 'fireglass_custom';
+let customPrograms = {};
+
+function loadCustomPrograms() {
+  try { customPrograms = JSON.parse(localStorage.getItem(CUSTOM_KEY) || '{}'); }
+  catch { customPrograms = {}; }
+}
+
+function getSegmentsF(type, speed) {
+  return customPrograms[type]?.[speed] || PROGRAMS_F[type][speed];
+}
+
+function isModified(type, speed) {
+  return !!(customPrograms[type]?.[speed]);
+}
+
+function saveCustomSegments(type, speed, segsInDisplayUnit) {
+  // Always store in °F
+  const unit = state.unit;
+  const segsF = unit === 'F' ? segsInDisplayUnit
+    : segsInDisplayUnit.map(s => ({
+        rate: rateCToF(s.rate),
+        temp: cToF(s.temp),
+        hold: s.hold,
+      }));
+  if (!customPrograms[type]) customPrograms[type] = {};
+  customPrograms[type][speed] = segsF;
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(customPrograms));
+}
+
+function resetCustomSegments(type, speed) {
+  if (customPrograms[type]) {
+    delete customPrograms[type][speed];
+    if (!Object.keys(customPrograms[type]).length) delete customPrograms[type];
+  }
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(customPrograms));
+}
 
 function programInUnit(type, speed, unit) {
-  const segs = PROGRAMS_F[type][speed];
+  const segs = getSegmentsF(type, speed);
   if (unit === 'F') return segs;
   return segs.map(s => ({ rate: rateToC(s.rate), temp: fToC(s.temp), hold: s.hold }));
 }
@@ -810,6 +893,13 @@ function updateDurationDisplay() {
 }
 
 // ── Segment table ──────────────────────────────────────────────────────────
+let editMode = false;
+
+function updateModifiedBadge() {
+  document.getElementById('modifiedBadge').style.display =
+    isModified(state.type, state.speed) ? 'inline' : 'none';
+}
+
 function renderSegTable() {
   if (!timeline) return;
   const unit = state.unit;
@@ -818,25 +908,95 @@ function renderSegTable() {
   const init = startTemp(unit);
   const tbody = document.getElementById('segTableBody');
   tbody.innerHTML = '';
+  // Show/hide computed columns in edit mode
+  document.getElementById('thTravel').style.display = editMode ? 'none' : '';
+  document.getElementById('thTotal').style.display  = editMode ? 'none' : '';
   let prevTemp = init;
   segs.forEach((seg, i) => {
     const travelMin = seg.rate >= 9999 ? 0 : Math.abs(seg.temp - prevTemp) / seg.rate * 60;
-    const totalMin = travelMin + seg.hold;
-    const rateStr = seg.rate >= 9999 ? 'MAX' : seg.rate + ul+'/hr';
+    const totalMin  = travelMin + seg.hold;
+    const phaseName = (PHASE_NAMES[i]?.[0] || `Seg ${i+1}`).replace(' Ramp','').replace(' Hold','');
     const tr = document.createElement('tr');
     tr.dataset.seg = i;
-    tr.innerHTML = `
-      <td>${i+1}</td>
-      <td>${PHASE_NAMES[i] ? PHASE_NAMES[i][0].replace(' Ramp','').replace(' Hold','') : 'Seg '+(i+1)}</td>
-      <td>${rateStr}</td>
-      <td>${seg.temp}${ul}</td>
-      <td>${travelMin > 0 ? fmtMin(travelMin) : '—'}</td>
-      <td>${seg.hold > 0 ? fmtMin(seg.hold) : '—'}</td>
-      <td>${fmtMin(totalMin)}</td>
-    `;
+    if (editMode) {
+      tr.innerHTML = `
+        <td>${i+1}</td>
+        <td style="font-size:0.72rem;color:var(--text2)">${phaseName}</td>
+        <td class="edit-cell"><input class="seg-input input-rate" type="text"
+          value="${seg.rate >= 9999 ? 'MAX' : seg.rate}" title="Rate (${ul}/hr) or MAX"></td>
+        <td class="edit-cell"><input class="seg-input input-temp" type="number"
+          value="${seg.temp}" title="Target temp (${ul})"></td>
+        <td class="edit-cell"><input class="seg-input input-hold" type="number"
+          value="${seg.hold}" min="0" title="Hold (minutes)"></td>
+      `;
+    } else {
+      const rateStr = seg.rate >= 9999 ? 'MAX' : `${seg.rate}${ul}/hr`;
+      tr.innerHTML = `
+        <td>${i+1}</td>
+        <td>${phaseName}</td>
+        <td>${rateStr}</td>
+        <td>${seg.temp}${ul}</td>
+        <td>${travelMin > 0 ? fmtMin(travelMin) : '—'}</td>
+        <td>${seg.hold > 0 ? fmtMin(seg.hold) : '—'}</td>
+        <td>${fmtMin(totalMin)}</td>
+      `;
+    }
     tbody.appendChild(tr);
     prevTemp = seg.temp;
   });
+  updateModifiedBadge();
+}
+
+// ── Edit mode controls ─────────────────────────────────────────────────────
+function setEditButtons(inEdit) {
+  document.getElementById('editBtn').style.display   = inEdit ? 'none' : '';
+  document.getElementById('saveBtn').style.display   = inEdit ? '' : 'none';
+  document.getElementById('cancelBtn').style.display = inEdit ? '' : 'none';
+  document.getElementById('resetBtn').style.display  =
+    (inEdit && isModified(state.type, state.speed)) ? '' : 'none';
+  document.getElementById('editHint').textContent =
+    inEdit ? `Editing ${state.type} ${state.speed} — values in ${unitLabel(state.unit)}` : '';
+}
+
+function enterEditMode() {
+  editMode = true;
+  document.getElementById('segDetails').open = true;
+  renderSegTable();
+  setEditButtons(true);
+}
+
+function cancelEditMode() {
+  editMode = false;
+  renderSegTable();
+  setEditButtons(false);
+}
+
+function saveEditMode() {
+  const rows = document.querySelectorAll('#segTableBody tr');
+  const segs = [];
+  for (const row of rows) {
+    const rateVal = row.querySelector('.input-rate')?.value.trim().toUpperCase();
+    const tempVal = parseFloat(row.querySelector('.input-temp')?.value);
+    const holdVal = parseFloat(row.querySelector('.input-hold')?.value);
+    if (isNaN(tempVal) || isNaN(holdVal)) { alert('Invalid values — all fields must be numbers.'); return; }
+    const rate = rateVal === 'MAX' ? 9999 : parseFloat(rateVal);
+    if (isNaN(rate) || rate <= 0) { alert('Invalid rate — enter a number (°/hr) or "MAX".'); return; }
+    segs.push({ rate, temp: tempVal, hold: Math.max(0, Math.round(holdVal)) });
+  }
+  saveCustomSegments(state.type, state.speed, segs);
+  editMode = false;
+  rebuildTimeline();
+  renderSegTable();
+  setEditButtons(false);
+}
+
+function resetProgram() {
+  if (!confirm(`Reset "${state.type} ${state.speed}" to factory defaults?`)) return;
+  resetCustomSegments(state.type, state.speed);
+  editMode = false;
+  rebuildTimeline();
+  renderSegTable();
+  setEditButtons(false);
 }
 
 // ── Phase legend ───────────────────────────────────────────────────────────
@@ -1032,7 +1192,7 @@ document.getElementById('typeRow').addEventListener('click', e => {
   state.type = btn.dataset.type;
   document.querySelectorAll('[data-type]').forEach(b =>
     b.classList.toggle('active', b === btn));
-  rebuildTimeline();
+  if (editMode) cancelEditMode(); else rebuildTimeline();
 });
 
 document.getElementById('speedRow').addEventListener('click', e => {
@@ -1043,7 +1203,7 @@ document.getElementById('speedRow').addEventListener('click', e => {
     b.classList.remove('active','active-slow','active-med','active-fast');
   });
   btn.classList.add('active', `active-${state.speed.toLowerCase()}`);
-  rebuildTimeline();
+  if (editMode) cancelEditMode(); else rebuildTimeline();
 });
 
 document.querySelector('.unit-toggle').addEventListener('click', e => {
@@ -1058,6 +1218,11 @@ document.querySelector('.unit-toggle').addEventListener('click', e => {
 startBtn.addEventListener('click', startSession);
 stopBtn.addEventListener('click', () => stopSession(false));
 
+document.getElementById('editBtn').addEventListener('click', enterEditMode);
+document.getElementById('saveBtn').addEventListener('click', saveEditMode);
+document.getElementById('cancelBtn').addEventListener('click', cancelEditMode);
+document.getElementById('resetBtn').addEventListener('click', resetProgram);
+
 function rebuildTimeline() {
   document.getElementById('completeBanner').classList.remove('show');
   const segs = programInUnit(state.type, state.speed, state.unit);
@@ -1067,6 +1232,7 @@ function rebuildTimeline() {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
+loadCustomPrograms();
 resetStartTimeInput();
 initChart();
 rebuildTimeline();
